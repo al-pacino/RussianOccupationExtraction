@@ -137,23 +137,34 @@ bool System( const string& arg )
 
 ///////////////////////////////////////////////////////////////////////////////
 
-vector<string> SplitString( const string& str, const char* delimiters = " \t\r" )
+vector<string> SplitString( const string& str, const char* delimiters = " \t\r",
+	bool preserveEmptyStrings = false )
 {
 	vector<string> strings;
-	for( size_t offset = 0; offset < str.length(); offset++ ) {
-		const size_t beginPos = str.find_first_not_of( delimiters, offset );
-		if( beginPos == string::npos ) {
+	size_t offset = 0;
+	while( offset < str.length() ) {
+		size_t delimiterPos = str.find_first_of( delimiters, offset );
+		if( delimiterPos == string::npos ) {
 			break;
 		}
-		size_t endPos = str.find_first_of( delimiters, beginPos );
-		if( endPos == string::npos ) {
-			endPos = str.length();
+
+		const string part = str.substr( offset, delimiterPos - offset );
+		if( preserveEmptyStrings || !part.empty() ) {
+			strings.push_back( part );
 		}
-		strings.push_back( str.substr( beginPos, endPos - beginPos ) );
-		offset = endPos;
+
+		offset = delimiterPos + 1;
 	}
+
+	const string part = str.substr( offset );
+	if( preserveEmptyStrings || !part.empty() ) {
+		strings.push_back( part );
+	}
+
 	return strings;
 }
+
+///////////////////////////////////////////////////////////////////////////////
 
 class CDictionaries {
 	friend class CFinder;
@@ -775,7 +786,7 @@ vector<string> MakeAllVariants( const string& text )
 	const string middle = text.substr( beginPos + 1, endPos - ( beginPos + 1 ) );
 	const string suffix = text.substr( endPos + 1 );
 
-	vector<string> middles = SplitString( middle, "|" );
+	vector<string> middles = SplitString( middle, "|", true /* preserveEmptyStrings */ );
 	if( middles.size() == 1 ) {
 		middles.push_back( "" );
 	}
