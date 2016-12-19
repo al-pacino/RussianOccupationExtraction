@@ -55,7 +55,7 @@ void ConvertUtf8ToWindows1251( const string& sourceFilename, const string& destF
 	ifstream src( sourceFilename );
 	ofstream dest( destFilename, ios_base::out | ios_base::binary );
 
-	for( ;;) {
+	while( src.good() ) {
 		string line;
 		getline( src, line );
 		if( src.eof() ) {
