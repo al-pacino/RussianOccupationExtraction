@@ -864,6 +864,67 @@ void ReadTokens( const string& baseFilename, CTokens& tokens,
 
 ///////////////////////////////////////////////////////////////////////////////
 
+void Occupation( const string& baseFilename,
+	const CTokens& tokens, const CDictionaries& templates )
+{
+	CFinder finder( templates );
+	for( const CToken& token : tokens ) {
+		finder.Push( token.Lexem );
+	}
+	finder.Finish();
+
+	ofstream output( baseFilename + ".task3" );
+	for( const CFinder::CMatch& match : finder.Matches() ) {
+		string who;
+		for( size_t i = match.Begin; i < match.End; i++ ) {
+			if( tokens[i].Lexem == "$P" ) {
+				who = tokens[i].Text;
+			}
+		}
+
+		string where;
+		for( size_t i = match.Begin; i < match.End; i++ ) {
+			if( tokens[i].Lexem == "$O" || tokens[i].Lexem == "$L" ) {
+				where = tokens[i].Text;
+			}
+		}
+
+		string job;
+		if( match.Dictionary == 1 ) {
+			job = "зав .";
+		} else if( match.Dictionary == 6 ) {
+			job = tokens[match.Begin].Text;
+			if( tokens[match.Begin + 1].Lexem == "$O" || tokens[match.Begin + 1].Lexem == "$L" ) {
+				job += " " + tokens[match.Begin + 1].Text;
+			}
+		} else {
+			for( size_t i = match.Begin; i < match.End; i++ ) {
+				if( tokens[i].Lexem == "@1" ) {
+					job = tokens[i].Text;
+				}
+			}
+		}
+
+		if( who.empty() && where.empty() && job.empty() ) {
+			throw logic_error( "so bad..." );
+		}
+
+		output << "Occupation" << endl;
+		if( !who.empty() ) {
+			output << "who:" << who << endl;
+		}
+		if( !where.empty() ) {
+			output << "where:" << where << endl;
+		}
+		if( !job.empty() ) {
+			output << "job:" << job << endl;
+		}
+		output << endl;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 int main( int argc, const char* argv[] )
 {
 	try {
@@ -906,28 +967,12 @@ int main( int argc, const char* argv[] )
 		ProcessTokensByDictionaries( dictionaries, tokens );
 
 		// Print tokens
-		for( const CToken& token : tokens ) {
+		/*for( const CToken& token : tokens ) {
 			cout << token.Text << " " << token.Lexem << " "
 				<< token.Begin << " " << token.End << endl;
-		}
+		}*/
 
-		{
-			CFinder finder( templates );
-			for( const CToken& token : tokens ) {
-				finder.Push( token.Lexem );
-			}
-			finder.Finish();
-
-			for( const CFinder::CMatch& match : finder.Matches() ) {
-				cout << tokens[match.Begin].Begin << " "
-					<< tokens[match.End - 1].End << " "
-					<< match.Dictionary << ":";
-				for( size_t i = match.Begin; i < match.End; i++ ) {
-					cout << " " << tokens[i].Text;
-				}
-				cout << endl;
-			}
-		}
+		Occupation( baseFilename, tokens, templates );
 	} catch( exception& e ) {
 		cerr << "Error: " << e.what() << endl;
 		return 1;
