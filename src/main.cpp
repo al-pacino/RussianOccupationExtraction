@@ -120,6 +120,23 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+bool System( const string& arg )
+{
+	if( system( nullptr ) == 0 ) {
+		throw CException( " Function `int system( const char* )` is not supported." );
+	}
+
+#ifdef _WIN32
+	const int returnCode = system( ( "\"" + arg + "\"" ).c_str() );
+#else
+	const int returnCode = system( arg.c_str() );
+#endif
+
+	return ( returnCode == 0 );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 vector<string> SplitString( const string& str, const char* delimiters = " \t\r" )
 {
 	vector<string> strings;
@@ -798,23 +815,39 @@ void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void ReadTokens( const string& baseFilename, CTokens& tokens )
+const char* const MystemExeName = "mystem";
+
+string GetMystemPath( const string& exePath )
+{
+	const size_t pos = exePath.find_last_of( "\\/" );
+	if( pos != string::npos ) {
+		return exePath.substr( 0, pos + 1 ) + MystemExeName;
+	}
+	return MystemExeName;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void ReadTokens( const string& baseFilename, CTokens& tokens,
+	const string& mystemPath = MystemExeName )
 {
 	// prepare file
 	const string tempFilename1 = "temp1.txt";
 	const string tempFilename2 = "temp2.txt";
-	const string mystrem = "mystem -ncwd --eng-gr -e cp1251 "
+	const string mystrem = "\"" + mystemPath + "\" -ncwd --eng-gr -e cp1251 "
 		+ tempFilename1 + " " + tempFilename2;
 	ConvertUtf8ToWindows1251( baseFilename + ".txt", tempFilename1 );
-	system( mystrem.c_str() );
+	if( !System( mystrem ) ) {
+		throw CException( "Cannot run `mystem`." );
+	}
 
 	// extract tokens
 	tokens.Read( tempFilename2 );
 
 #ifdef _WIN32
-	system( ( "DEL " + tempFilename1 + " " + tempFilename2 ).c_str() );
+	System( ( "DEL " + tempFilename1 + " " + tempFilename2 ).c_str() );
 #else
-	system( ( "rm " + tempFilename1 + " " + tempFilename2 ).c_str() );
+	System( ( "rm " + tempFilename1 + " " + tempFilename2 ).c_str() );
 #endif
 }
 
@@ -839,7 +872,7 @@ int main( int argc, const char* argv[] )
 		// templates
 		const string templatesFilename = argv[2];
 		CDictionaries templates;
-		LoadTemplates( "data/Templates.txt", templates );
+		LoadTemplates( templatesFilename, templates );
 
 		// replaces
 		CDictionaries dictionaries;
@@ -849,7 +882,7 @@ int main( int argc, const char* argv[] )
 
 		// prepare tokens
 		CTokens tokens;
-		ReadTokens( baseFilename, tokens );
+		ReadTokens( baseFilename, tokens, GetMystemPath( argv[0] ) );
 
 		// extract named entities
 		CNamedEntities namedEntities;
