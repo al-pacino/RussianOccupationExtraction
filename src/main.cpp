@@ -1,4 +1,5 @@
 #include <map>
+#include <array>
 #include <bitset>
 #include <limits>
 #include <string>
@@ -378,8 +379,14 @@ struct CInterval {
 	size_t End;
 
 	CInterval() :
-		Begin( numeric_limits<size_t>::max() ),
+		Begin( 0 ),
 		End( 0 )
+	{
+	}
+
+	CInterval( size_t begin, size_t end ) :
+		Begin( begin ),
+		End( end )
 	{
 	}
 
@@ -895,8 +902,93 @@ void ParseTokens( const string& baseFilename, CTokens& tokens,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Occupation( const string& baseFilename,
-	const CTokens& tokens, const CDictionaries& templates )
+class CUtf8TextFile {
+public:
+	explicit CUtf8TextFile( const string& filename );
+
+	string Text( CInterval interval ) const;
+
+private:
+	typedef array<char, 4> CChar;
+	vector<CChar> chars;
+};
+
+CUtf8TextFile::CUtf8TextFile( const string& filename )
+{
+	ifstream input( filename );
+	if( !input.good() ) {
+		throw CException( "File `" + filename + "` not found." );
+	}
+
+	do {
+		string line;
+		getline( input, line );
+		if( !line.empty() && line.back() == '\r' ) {
+			line.pop_back();
+		}
+
+		size_t index = 0;
+		for( char c : line ) {
+			const unsigned char uc = static_cast<unsigned char>( c );
+			if( uc >= 128 && uc < 192 ) {
+				chars.back()[++index] = c;
+			} else {
+				index = 0;
+				chars.push_back( { c, '\0', '\0', '\0' } );
+			}
+		}
+		chars.push_back( { '\n', '\0', '\0', '\0' } );
+	} while( input.good() );
+}
+
+string CUtf8TextFile::Text( CInterval interval ) const
+{
+	string text;
+	for( size_t i = interval.Begin; i < interval.End; i++ ) {
+		text.push_back( chars[i][0] );
+		for( size_t j = 1; j < chars[i].size() && chars[i][j] != '\0'; j++ ) {
+			text.push_back( chars[i][j] );
+		}
+	}
+	return text;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+struct COccupation {
+	CInterval Who;
+	CInterval Where;
+	CInterval Job;
+
+	bool Check() const
+	{
+		return Who.Defined() && Where.Defined();
+	}
+	void Write( ostream& output, const CUtf8TextFile& textFle ) const
+	{
+		if( !Check() ) {
+		//	throw logic_error( "bad occupation" );
+		}
+		output << "Occupation" << endl;
+		output << "who:" << textFle.Text( Who ) << endl;
+		if( Where.Defined() ) {
+			output << "where:" << textFle.Text( Where ) << endl;
+		}
+		if( Job.Defined() ) {
+			output << "job:" << textFle.Text( Job ) << endl;
+		}
+	}
+};
+
+///////////////////////////////////////////////////////////////////////////////
+
+class COccupations : public vector<COccupation> {
+public:
+	void Fill( const CTokens& tokens, const CDictionaries& templates );
+	void Write( const string& baseFilename ) const;
+};
+
+void COccupations::Fill( const CTokens& tokens, const CDictionaries& templates )
 {
 	CFinder finder( templates );
 	for( const CToken& token : tokens ) {
@@ -904,52 +996,50 @@ void Occupation( const string& baseFilename,
 	}
 	finder.Finish();
 
-	ofstream output( baseFilename + ".task3cp1251" );
 	for( const CFinder::CMatch& match : finder.Matches() ) {
-		string who;
+		COccupation occupation;
 		for( size_t i = match.Begin; i < match.End; i++ ) {
 			if( tokens[i].Lexem == "$P" ) {
-				who = tokens[i].Text;
+				occupation.Who = tokens[i];
 			}
 		}
 
-		string where;
 		for( size_t i = match.Begin; i < match.End; i++ ) {
 			if( tokens[i].Lexem == "$O" || tokens[i].Lexem == "$L" ) {
-				where = tokens[i].Text;
+				occupation.Where = tokens[i];
 			}
 		}
 
-		string job;
 		if( match.Dictionary == 1 ) {
-			job = "зав .";
+			for( size_t i = match.Begin; i < match.End; i++ ) {
+				if( tokens[i].Lexem == "зав" ) {
+					occupation.Job = CInterval( tokens[i].Begin, tokens[i + 1].End );
+				}
+			}
 		} else if( match.Dictionary == 6 ) {
-			job = tokens[match.Begin].Text;
+			occupation.Job = tokens[match.Begin];
 			if( tokens[match.Begin + 1].Lexem == "$O" || tokens[match.Begin + 1].Lexem == "$L" ) {
-				job += " " + tokens[match.Begin + 1].Text;
+				occupation.Job.End = tokens[match.Begin + 1].End;
 			}
 		} else {
 			for( size_t i = match.Begin; i < match.End; i++ ) {
 				if( tokens[i].Lexem == "@1" ) {
-					job = tokens[i].Text;
+					occupation.Job = tokens[i];
 				}
 			}
 		}
 
-		if( who.empty() && where.empty() && job.empty() ) {
-			throw logic_error( "so bad..." );
-		}
+		// add occupation
+		push_back( occupation );
+	}
+}
 
-		output << "Occupation" << endl;
-		if( !who.empty() ) {
-			output << "who:" << who << endl;
-		}
-		if( !where.empty() ) {
-			output << "where:" << where << endl;
-		}
-		if( !job.empty() ) {
-			output << "job:" << job << endl;
-		}
+void COccupations::Write( const string& baseFilename ) const
+{
+	CUtf8TextFile sourceFile( baseFilename + ".txt" );
+	ofstream output( baseFilename + ".task3" );
+	for( const COccupation& occupation : *this ) {
+		occupation.Write( output, sourceFile );
 		output << endl;
 	}
 }
@@ -1005,13 +1095,10 @@ int main( int argc, const char* argv[] )
 		// Normalize by dictionaries
 		ProcessTokensByDictionaries( dictionaries, tokens );
 
-		// Print tokens
-		/*for( const CToken& token : tokens ) {
-			cout << token.Text << " " << token.Lexem << " "
-				<< token.Begin << " " << token.End << endl;
-		}*/
-
-		Occupation( baseFilename, tokens, templates );
+		// Write result
+		COccupations occupations;
+		occupations.Fill( tokens, templates );
+		occupations.Write( baseFilename );
 	} catch( exception& e ) {
 		cerr << "Error: " << e.what() << endl;
 		return 1;
