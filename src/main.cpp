@@ -491,7 +491,7 @@ void CNamedEntities::Read( const string& baseFilename )
 		}
 	}
 	if( spans.fail() ) {
-		throw CException( "Bad file `" + spansFilename + "` format." );
+		throw CException( "Bad spans file `" + spansFilename + "` format." );
 	}
 
 	// read objects
@@ -542,7 +542,7 @@ void CNamedEntities::Read( const string& baseFilename )
 		objects.setstate( ios::failbit );
 	}
 	if( objects.fail() ) {
-		throw CException( "Bad file `" + objectsFilename + "` format." );
+		throw CException( "Bad objects file `" + objectsFilename + "` format." );
 	}
 	/*for( const CNamedEntity& entity : *this ) {
 		cout << NamedEntityTypeText( entity.Type ) << " " << entity.Begin << " " << entity.End << endl;
@@ -589,17 +589,48 @@ struct CToken : public CInterval {
 	string Lexem;
 };
 
+///////////////////////////////////////////////////////////////////////////////
+
 class CTokens : public vector<CToken> {
 public:
 	CTokens()
 	{
 	}
 
-	void Read( const string& filename );
+	void Parse( const string& stemedFile );
+
+	void Load( const string& filename );
+	void Save( const string& filename ) const;
 
 private:
 	static void restorePlainText( string& text );
 };
+
+void CTokens::Load( const string& filename )
+{
+	clear();
+	ifstream input( filename );
+	while( input.good() ) {
+		CToken token;
+		input >> token.Begin >> token.End >> ws;
+		getline( input, token.Text, '\t' );
+		getline( input, token.Lexem );
+		if( input.fail() ) {
+			throw CException( "Bad todua-tokens file `" + filename + "` format." );
+		}
+		push_back( token );
+		input >> ws;
+	}
+}
+
+void CTokens::Save( const string& filename ) const
+{
+	ofstream output( filename );
+	for( const CToken& token : *this ) {
+		output << token.Begin << "\t" << token.End << "\t"
+			<< token.Text << "\t" << token.Lexem << endl;
+	}
+}
 
 void CTokens::restorePlainText( string& text )
 {
@@ -626,7 +657,7 @@ void CTokens::restorePlainText( string& text )
 	}
 }
 
-void CTokens::Read( const string& filename )
+void CTokens::Parse( const string& filename )
 {
 	clear();
 	ifstream input( filename );
@@ -839,7 +870,7 @@ string GetMystemPath( const string& exePath )
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void ReadTokens( const string& baseFilename, CTokens& tokens,
+void ParseTokens( const string& baseFilename, CTokens& tokens,
 	const string& mystemPath = MystemExeName )
 {
 	// prepare file
@@ -853,7 +884,7 @@ void ReadTokens( const string& baseFilename, CTokens& tokens,
 	}
 
 	// extract tokens
-	tokens.Read( tempFilename2 );
+	tokens.Parse( tempFilename2 );
 
 #ifdef _WIN32
 	System( ( "DEL " + tempFilename1 + " " + tempFilename2 ).c_str() );
@@ -873,7 +904,7 @@ void Occupation( const string& baseFilename,
 	}
 	finder.Finish();
 
-	ofstream output( baseFilename + ".task3" );
+	ofstream output( baseFilename + ".task3cp1251" );
 	for( const CFinder::CMatch& match : finder.Matches() ) {
 		string who;
 		for( size_t i = match.Begin; i < match.End; i++ ) {
@@ -940,9 +971,10 @@ int main( int argc, const char* argv[] )
 
 		// base filename (without extension)
 		const string baseFilename = argv[1];
+		const string templatesFilename = argv[2];
+		const string toduaTokensFilename = baseFilename + ".todua-tokens";
 
 		// templates
-		const string templatesFilename = argv[2];
 		CDictionaries templates;
 		LoadTemplates( templatesFilename, templates );
 
@@ -954,14 +986,21 @@ int main( int argc, const char* argv[] )
 
 		// prepare tokens
 		CTokens tokens;
-		ReadTokens( baseFilename, tokens, GetMystemPath( argv[0] ) );
+		tokens.Load( toduaTokensFilename );
 
-		// extract named entities
-		CNamedEntities namedEntities;
-		namedEntities.Read( baseFilename );
+		if( tokens.empty() ) {
+			ParseTokens( baseFilename, tokens, GetMystemPath( argv[0] ) );
 
-		// set named entity type for tokens
-		SetNamedEntitiyTokenTypes( namedEntities, tokens );
+			// extract named entities
+			CNamedEntities namedEntities;
+			namedEntities.Read( baseFilename );
+
+			// set named entity type for tokens
+			SetNamedEntitiyTokenTypes( namedEntities, tokens );
+
+			// dump token for future executions.
+			tokens.Save( toduaTokensFilename );
+		}
 
 		// Normalize by dictionaries
 		ProcessTokensByDictionaries( dictionaries, tokens );
