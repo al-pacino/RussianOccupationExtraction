@@ -379,7 +379,7 @@ struct CInterval {
 	size_t End;
 
 	CInterval() :
-		Begin( 0 ),
+		Begin( numeric_limits<size_t>::max() ),
 		End( 0 )
 	{
 	}
@@ -943,6 +943,9 @@ CUtf8TextFile::CUtf8TextFile( const string& filename )
 
 string CUtf8TextFile::Text( CInterval interval ) const
 {
+	if( !interval.Defined() ) {
+		throw logic_error( "CUtf8TextFile::Text() undefined interval" );
+	}
 	string text;
 	for( size_t i = interval.Begin; i < interval.End; i++ ) {
 		text.push_back( chars[i][0] );
@@ -967,7 +970,7 @@ struct COccupation {
 	void Write( ostream& output, const CUtf8TextFile& textFle ) const
 	{
 		if( !Check() ) {
-		//	throw logic_error( "bad occupation" );
+			throw logic_error( "bad occupation" );
 		}
 		output << "Occupation" << endl;
 		output << "who:" << textFle.Text( Who ) << endl;
