@@ -99,12 +99,10 @@ job:координатор
 ```
 
 
-## Сборка программы в ОС семейства Windows
+## Сборка программы 
 
-Достаточно собрать решение для Visual Studio 2015 (RussianOccupationExtraction.sln).
-
-## Сборка программы в ОС семейства Unix/Linux/Mac OS
-
+- В операционноых системах семейства Windows достаточно собрать решение для Visual Studio 2015 (RussianOccupationExtraction.sln).
+- В операционноых системах семейства Unix/Linux/Mac OS достаточно выполнить скрипт сборки:
 ```sh
 $ ./build.sh
 ```
