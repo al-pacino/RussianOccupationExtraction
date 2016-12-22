@@ -32,9 +32,9 @@ inline bool IsCharAlphaOrDigit( const char c )
 	" ABCDEFGHIJKLMNOPQRSTUVWXYZ     "
 	" abcdefghijklmnopqrstuvwxyz     "
 	"                                "
-	"Β                                "
-	"ΠΠ‘Π’Π“Π”Π•Π–Π—ΠΠ™ΠΠ›ΠΠΠΠΠ Π΅ΠΆΠ£Π¤Π¥Π¦Π§Π¨Π©ΠªΠ«Π¬Π­Π®Π―"
-	"Π°Π±Π²Π³Π΄ΠµΠ¶Π·ΠΈΠΉΠΊΠ»ΠΌΠ½ΠΎΠΏΡ€ΡΡ‚ΡƒΡ„Ρ…Ρ†Ρ‡ΡΡ‰ΡΡ‹ΡΡΡΡ"
+	"                                "
+	"ΐΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡÒΣΤΥΦΧΨΩΪΫάέήί"
+	"ΰαβγδεζηθικλμνξοπρςστυφχψωϊϋόύώÿ"
 	*/
 	static const vector<bool> list1251{
 		0,0,0,0,0,0,0,1, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
@@ -1015,7 +1015,7 @@ void COccupations::Fill( const CTokens& tokens, const CDictionaries& templates )
 
 		if( match.Dictionary == 1 ) {
 			for( size_t i = match.Begin; i < match.End; i++ ) {
-				if( tokens[i].Lexem == "Π·Π°Π²" ) {
+				if( tokens[i].Lexem == "ηΰβ" ) {
 					occupation.Job = CInterval( tokens[i].Begin, tokens[i + 1].End );
 				}
 			}
