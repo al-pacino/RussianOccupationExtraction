@@ -770,6 +770,10 @@ void SetNamedEntitiyTokenTypes( const CNamedEntities& namedEntities, CTokens& to
 			}
 		}
 	}
+	while( token != tmp.cend() ) {
+		tokens.push_back( *token );
+		++token;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
