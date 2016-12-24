@@ -831,6 +831,85 @@ vector<string> MakeAllVariants( const string& text )
 	return variants;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
+class CVariantDef {
+public:
+	CVariantDef() {}
+
+	bool AddToken( string& token );
+
+private:
+	enum TTokenType {
+		TT_None,
+		TT_Who,
+		TT_Where,
+		TT_Job
+	};
+	vector<TTokenType> tokenTypes;
+};
+
+bool CVariantDef::AddToken( string& token )
+{
+	TTokenType tokenType = TT_None;
+	if( token == "$P" ) {
+		tokenType = TT_Who;
+	} else if( token == "$O" || token == "$L" ) {
+		tokenType = TT_Where;
+	} else {
+		const size_t tildePos = token.find_first_of( "~" );
+		if( tildePos != string::npos ) {
+			if( tildePos == 0 ) {
+				return false;
+			}
+			const string afterTidle = token.substr( tildePos );
+			if( afterTidle == "~job" ) {
+				tokenType = TT_Job;
+			} else if( afterTidle == "~where" ) {
+				tokenType = TT_Where;
+			} else if( afterTidle == "~who" ) {
+				tokenType = TT_Who;
+			} else if( afterTidle != "~" ) {
+				return false;
+			}
+			token = token.substr( 0, tildePos );
+		}
+	}
+	tokenTypes.push_back( tokenType );
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+class CVariantDefs : public vector<CVariantDef> {
+public:
+	CVariantDefs();
+
+	void AddVariant( string& variant );
+};
+
+CVariantDefs::CVariantDefs()
+{
+	push_back( CVariantDef() ); // fake
+}
+
+void CVariantDefs::AddVariant( string& variant )
+{
+	push_back( CVariantDef() );
+	vector<string> tokens = SplitString( variant );
+	for( string& token : tokens ) {
+		if( !back().AddToken( token ) ) {
+			throw CException( "Invalid format" );
+		}
+	}
+	variant.clear();
+	for( const string& token : tokens ) {
+		variant += token + " ";
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries )
 {
 	ifstream templatesFile( templatesFilename );
@@ -838,6 +917,7 @@ void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries
 		throw CException( "Cannot read templates `" + templatesFilename + "`." );
 	}
 	size_t lineNumber = 0;
+	CVariantDefs variantDefs;
 	do {
 		string line;
 		++lineNumber;
@@ -849,8 +929,8 @@ void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries
 				" line " + to_string( lineNumber ) + "." );
 		}
 
-		for( const string& variant : variants ) {
-			TextReplace( line, ReplacementsCP1251 );
+		for( string& variant : variants ) {
+			variantDefs.AddVariant( variant );
 			dictionaries.AddLine( variant, lineNumber );
 		}
 	} while( templatesFile.good() );
