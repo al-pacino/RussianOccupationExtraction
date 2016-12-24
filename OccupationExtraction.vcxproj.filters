@@ -9,5 +9,13 @@
     <ClCompile Include="src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\utf8tools.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\utf8tools.h">
+      <Filter>src</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

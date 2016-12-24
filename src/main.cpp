@@ -5,101 +5,15 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <algorithm>
 #include <exception>
 #include <unordered_map>
 
+#include "utf8tools.h"
+
 using namespace std;
-
-///////////////////////////////////////////////////////////////////////////////
-
-inline char AllowedCharASCII( const char c )
-{
-	const char* listASCII =
-		"                                "
-		" !      ()  ,-. 0123456789:;   ?"
-		" abcdefghijklmnopqrstuvwxyz     "
-		" abcdefghijklmnopqrstuvwxyz     ";
-
-	return listASCII[static_cast<unsigned char>( c )];
-}
-
-inline bool IsCharAlphaOrDigit( const char c )
-{
-	/*
-	"                                "
-	" ABCDEFGHIJKLMNOPQRSTUVWXYZ     "
-	" abcdefghijklmnopqrstuvwxyz     "
-	"                                "
-	"                                "
-	"ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß"
-	"àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ"
-	*/
-	static const vector<bool> list1251{
-		0,0,0,0,0,0,0,1, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0,
-		0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0,
-		0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0,
-		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-		1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
-		1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1
-	};
-	return list1251[static_cast<unsigned char>( c )];
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void ConvertUtf8ToWindows1251( const string& sourceFilename, const string& destFilename )
-{
-	ifstream src( sourceFilename );
-	ofstream dest( destFilename, ios_base::out | ios_base::binary );
-
-	while( src.good() ) {
-		string line;
-		getline( src, line );
-		if( src.eof() ) {
-			break;
-		}
-		if( !line.empty() && line.back() == '\r' ) {
-			line.pop_back();
-		}
-
-		string destLine;
-		for( size_t i = 0; i < line.length(); i++ ) {
-			const unsigned char c = line[i];
-			if( c < 128 ) {
-				destLine += AllowedCharASCII( c );
-			} else if( c >= 128 && c < 192 ) {
-				continue;
-			} else {
-				unsigned char destC = ' ';
-				if( c >= 192 && c < 224 ) {
-					const unsigned char nc = line[i + 1];
-					if( c == 0xD0 ) {
-						if( nc >= 0x90 && nc <= 0xAF ) { // A .. YA
-							destC = nc - 0x90 + 0xE0;
-						} else if( nc >= 0xB0 && nc <= 0xBF ) { // A .. P
-							destC = nc - 0xB0 + 0xE0;
-						} else if( nc == 0x81 ) { // YO
-							destC = 0xE5; // ye
-						}
-					} else if( c == 0xD1 ) {
-						if( nc >= 0x80 && nc <= 0x8F ) { // r ya
-							destC = nc - 0x80 + 0xF0;
-						} else if( nc == 0x91 ) { // yo
-							destC = 0xE5; // ye
-						}
-					}
-				}
-				destLine += static_cast<char>( destC );
-			}
-		}
-		destLine += '\n';
-		dest.write( destLine.data(), destLine.length() );
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -118,6 +32,79 @@ public:
 private:
 	string msg;
 };
+
+///////////////////////////////////////////////////////////////////////////////
+
+const string ReplacementsCP1251 =
+	"                                "
+	" !      ()  ,-. 0123456789:;   ?"
+	" abcdefghijklmnopqrstuvwxyz     "
+	" abcdefghijklmnopqrstuvwxyz     "
+	"  ,  .                --        "
+	"        \xE5    -          \xE5       "
+	"\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xEB\xEC\xED\xEE\xEF"
+	"\xF0\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFB\xFC\xFD\xFE\xFF"
+	"\xE0\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xEB\xEC\xED\xEE\xEF"
+	"\xF0\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFB\xFC\xFD\xFE\xFF";
+
+///////////////////////////////////////////////////////////////////////////////
+
+inline bool IsCharAlphaOrDigit( const char c )
+{
+	/*
+		"                                "
+		"                0123456789      "
+		" ABCDEFGHIJKLMNOPQRSTUVWXYZ     "
+		" abcdefghijklmnopqrstuvwxyz     "
+		"                                "
+		"                                "
+		"ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß"
+		"àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ"
+	*/
+	static const vector<bool> alphasAndDigits{
+		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0,
+		0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0,
+		0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0,
+		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+		1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
+		1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1
+	};
+	return alphasAndDigits[static_cast<unsigned char>( c )];
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void TextReplace( string& text, const string& replacements )
+{
+	for( char& c : text ) {
+		c = replacements[static_cast<unsigned char>( c )];
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void PrepareTextFile( const string& sourceFilename, const string& destFilename )
+{
+	ifstream src( sourceFilename );
+	ofstream dest( destFilename, ios_base::out | ios_base::binary );
+
+	if( !src.good() ) {
+		throw CException( "Cannot read text file `" + sourceFilename + "`." );
+	}
+
+	string line;
+	while( src.good() ) {
+		getline( src, line );
+		if( !ConvertUtf8ToWindows1251( line, ' ' ) ) {
+			throw CException( "Cannot read as valid UTF-8 text file `" + sourceFilename + "` ." );
+		}
+		TextReplace( line, ReplacementsCP1251 );
+		line += '\n';
+		dest.write( line.data(), line.length() );
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -199,11 +186,13 @@ void CDictionaries::AddFile( const string& dictionaryFilename, size_t dictionary
 	if( !dictionaryFile.good() ) {
 		throw CException( "Cannot read dictionary `" + dictionaryFilename + "`." );
 	}
-	do {
-		string line;
+	string line;
+	while( dictionaryFile.good() ) {
 		getline( dictionaryFile, line );
+		ConvertUtf8ToWindows1251( line );
+		TextReplace( line, ReplacementsCP1251 );
 		AddLine( line, dictionaryIndex );
-	} while( dictionaryFile.good() );
+	}
 }
 
 void CDictionaries::AddLine( const string& line, size_t dictionaryIndex )
@@ -853,7 +842,7 @@ void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries
 		string line;
 		++lineNumber;
 		getline( templatesFile, line );
-
+		ConvertUtf8ToWindows1251( line );
 		vector<string> variants = MakeAllVariants( line );
 		if( variants.empty() ) {
 			throw CException( "Invalid templates `" + templatesFilename + "`"
@@ -861,6 +850,7 @@ void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries
 		}
 
 		for( const string& variant : variants ) {
+			TextReplace( line, ReplacementsCP1251 );
 			dictionaries.AddLine( variant, lineNumber );
 		}
 	} while( templatesFile.good() );
@@ -889,7 +879,7 @@ void ParseTokens( const string& baseFilename, CTokens& tokens,
 	const string tempFilename2 = "temp2.txt";
 	const string mystrem = "\"" + mystemPath + "\" -ncwd --eng-gr -e cp1251 "
 		+ tempFilename1 + " " + tempFilename2;
-	ConvertUtf8ToWindows1251( baseFilename + ".txt", tempFilename1 );
+	PrepareTextFile( baseFilename + ".txt", tempFilename1 );
 	if( !System( mystrem ) ) {
 		throw CException( "Cannot run `mystem`." );
 	}
@@ -1059,7 +1049,6 @@ int main( int argc, const char* argv[] )
 #ifdef _WIN32
 		system( "chcp 1251" );
 #endif
-
 		if( argc < 3 ) {
 			throw CException( "Too few arguments.\n"
 				"Usage: occup BASE_FILENAME TEMPLATES_FILENAME [DICTIONARIES]..\n"
