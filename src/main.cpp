@@ -393,6 +393,12 @@ struct CInterval {
 	{
 		return ( End <= another.Begin || another.End <= Begin );
 	}
+
+	void Offset( size_t offset )
+	{
+		Begin += offset;
+		End += offset;
+	}
 };
 
 enum TNamedEntityType {
@@ -833,149 +839,6 @@ vector<string> MakeAllVariants( const string& text )
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class CVariantDef {
-public:
-	CVariantDef() {}
-
-	bool AddToken( string& token );
-
-private:
-	enum TTokenType {
-		TT_None,
-		TT_Who,
-		TT_Where,
-		TT_Job
-	};
-	vector<TTokenType> tokenTypes;
-};
-
-bool CVariantDef::AddToken( string& token )
-{
-	TTokenType tokenType = TT_None;
-	if( token == "$P" ) {
-		tokenType = TT_Who;
-	} else if( token == "$O" || token == "$L" ) {
-		tokenType = TT_Where;
-	} else {
-		const size_t tildePos = token.find_first_of( "~" );
-		if( tildePos != string::npos ) {
-			if( tildePos == 0 ) {
-				return false;
-			}
-			const string afterTidle = token.substr( tildePos );
-			if( afterTidle == "~job" ) {
-				tokenType = TT_Job;
-			} else if( afterTidle == "~where" ) {
-				tokenType = TT_Where;
-			} else if( afterTidle == "~who" ) {
-				tokenType = TT_Who;
-			} else if( afterTidle != "~" ) {
-				return false;
-			}
-			token = token.substr( 0, tildePos );
-		}
-	}
-	tokenTypes.push_back( tokenType );
-	return true;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-class CVariantDefs : public vector<CVariantDef> {
-public:
-	CVariantDefs();
-
-	void AddVariant( string& variant );
-};
-
-CVariantDefs::CVariantDefs()
-{
-	push_back( CVariantDef() ); // fake
-}
-
-void CVariantDefs::AddVariant( string& variant )
-{
-	push_back( CVariantDef() );
-	vector<string> tokens = SplitString( variant );
-	for( string& token : tokens ) {
-		if( !back().AddToken( token ) ) {
-			throw CException( "Invalid format" );
-		}
-	}
-	variant.clear();
-	for( const string& token : tokens ) {
-		variant += token + " ";
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void LoadTemplates( const string& templatesFilename, CDictionaries& dictionaries )
-{
-	ifstream templatesFile( templatesFilename );
-	if( !templatesFile.good() ) {
-		throw CException( "Cannot read templates `" + templatesFilename + "`." );
-	}
-	size_t lineNumber = 0;
-	CVariantDefs variantDefs;
-	do {
-		string line;
-		++lineNumber;
-		getline( templatesFile, line );
-		ConvertUtf8ToWindows1251( line );
-		vector<string> variants = MakeAllVariants( line );
-		if( variants.empty() ) {
-			throw CException( "Invalid templates `" + templatesFilename + "`"
-				" line " + to_string( lineNumber ) + "." );
-		}
-
-		for( string& variant : variants ) {
-			variantDefs.AddVariant( variant );
-			dictionaries.AddLine( variant, lineNumber );
-		}
-	} while( templatesFile.good() );
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-const char* const MystemExeName = "mystem";
-
-string GetMystemPath( const string& exePath )
-{
-	const size_t pos = exePath.find_last_of( "\\/" );
-	if( pos != string::npos ) {
-		return exePath.substr( 0, pos + 1 ) + MystemExeName;
-	}
-	return MystemExeName;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void ParseTokens( const string& baseFilename, CTokens& tokens,
-	const string& mystemPath = MystemExeName )
-{
-	// prepare file
-	const string tempFilename1 = "temp1.txt";
-	const string tempFilename2 = "temp2.txt";
-	const string mystrem = "\"" + mystemPath + "\" -ncwd --eng-gr -e cp1251 "
-		+ tempFilename1 + " " + tempFilename2;
-	PrepareTextFile( baseFilename + ".txt", tempFilename1 );
-	if( !System( mystrem ) ) {
-		throw CException( "Cannot run `mystem`." );
-	}
-
-	// extract tokens
-	tokens.Parse( tempFilename2 );
-
-#ifdef _WIN32
-	System( ( "DEL " + tempFilename1 + " " + tempFilename2 ).c_str() );
-#else
-	System( ( "rm " + tempFilename1 + " " + tempFilename2 ).c_str() );
-#endif
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
 class CUtf8TextFile {
 public:
 	explicit CUtf8TextFile( const string& filename );
@@ -1059,13 +922,193 @@ struct COccupation {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+class CVariantDefs {
+public:
+	CVariantDefs();
+
+	size_t AddVariant( string& variant );
+	COccupation Occupation( const size_t variantIndex,
+		CTokens::const_iterator firstMatchedToken ) const;
+
+private:
+	vector<COccupation> variants;
+
+	bool addToken( string& token, CInterval interval );
+	bool addInterval( CInterval& dest, CInterval newInterval ) const;
+};
+
+CVariantDefs::CVariantDefs()
+{
+}
+
+bool CVariantDefs::addInterval( CInterval& dest, CInterval interval ) const
+{
+	if( !dest.Defined() ) {
+		dest = interval;
+	} else if( dest.End == interval.Begin ) {
+		dest.End = interval.End;
+	} else {
+		return false;
+	}
+	return true;
+}
+
+bool CVariantDefs::addToken( string& token, CInterval interval )
+{
+	COccupation& occupation = variants.back();
+	if( token == "$P" ) {
+		return addInterval( occupation.Who, interval );
+	}
+
+	if( token == "$O" || token == "$L" ) {
+		return addInterval( occupation.Where, interval );
+	}
+
+	const size_t tildePos = token.find_first_of( "~" );
+	if( tildePos == string::npos ) {
+		return true;
+	}
+	if( tildePos == 0 ) {
+		return false;
+	}
+
+	const string afterTidle = token.substr( tildePos );
+	token = token.substr( 0, tildePos );
+
+	if( afterTidle == "~job" ) {
+		return addInterval( occupation.Job, interval );
+	} else if( afterTidle == "~where" ) {
+		return addInterval( occupation.Where, interval );
+	} else if( afterTidle == "~who" ) {
+		return addInterval( occupation.Who, interval );
+	}
+
+	return ( afterTidle == "~" );
+}
+
+size_t CVariantDefs::AddVariant( string& variant )
+{
+	variants.push_back( COccupation() );
+	vector<string> tokens = SplitString( variant );
+	CInterval interval( 0, 1 );
+	for( string& token : tokens ) {
+		if( !addToken( token, interval ) ) {
+			throw CException( "Invalid format" );
+		}
+		interval.Offset( 1 );
+	}
+	if( !variants.back().Check() ) {
+		throw CException( "Invalid format" );
+	}
+	variant.clear();
+	for( const string& token : tokens ) {
+		variant += token + " ";
+	}
+	return variants.size();
+}
+
+COccupation CVariantDefs::Occupation( const size_t variantIndex,
+	CTokens::const_iterator firstMatchedToken ) const
+{
+	COccupation occupation = variants[variantIndex - 1];
+	if( occupation.Who.Defined() ) {
+		occupation.Who.Begin = ( firstMatchedToken + occupation.Who.Begin )->Begin;
+		occupation.Who.End = ( firstMatchedToken + occupation.Who.End - 1 )->End;
+	}
+	if( occupation.Where.Defined() ) {
+		occupation.Where.Begin = ( firstMatchedToken + occupation.Where.Begin )->Begin;
+		occupation.Where.End = ( firstMatchedToken + occupation.Where.End - 1 )->End;
+	}
+	if( occupation.Job.Defined() ) {
+		occupation.Job.Begin = ( firstMatchedToken + occupation.Job.Begin )->Begin;
+		occupation.Job.End = ( firstMatchedToken + occupation.Job.End - 1 )->End;
+	}
+	if( !occupation.Check() ) {
+		throw logic_error( "CVariantDefs::Occupation" );
+	}
+	return occupation;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void LoadTemplates( const string& templatesFilename,
+	CDictionaries& dictionaries, CVariantDefs& variantDefs )
+{
+	ifstream templatesFile( templatesFilename );
+	if( !templatesFile.good() ) {
+		throw CException( "Cannot read templates `" + templatesFilename + "`." );
+	}
+	size_t lineNumber = 0;
+	do {
+		string line;
+		++lineNumber;
+		getline( templatesFile, line );
+		ConvertUtf8ToWindows1251( line );
+		vector<string> variants = MakeAllVariants( line );
+		if( variants.empty() ) {
+			throw CException( "Invalid templates `" + templatesFilename + "`"
+				" line " + to_string( lineNumber ) + "." );
+		}
+		if( variants.size() == 1 && variants.front().empty() ) {
+			variants.clear();
+		}
+
+		for( string& variant : variants ) {
+			const size_t index = variantDefs.AddVariant( variant );
+			dictionaries.AddLine( variant, index );
+		}
+	} while( templatesFile.good() );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+const char* const MystemExeName = "mystem";
+
+string GetMystemPath( const string& exePath )
+{
+	const size_t pos = exePath.find_last_of( "\\/" );
+	if( pos != string::npos ) {
+		return exePath.substr( 0, pos + 1 ) + MystemExeName;
+	}
+	return MystemExeName;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void ParseTokens( const string& baseFilename, CTokens& tokens,
+	const string& mystemPath = MystemExeName )
+{
+	// prepare file
+	const string tempFilename1 = "temp1.txt";
+	const string tempFilename2 = "temp2.txt";
+	const string mystrem = "\"" + mystemPath + "\" -ncwd --eng-gr -e cp1251 "
+		+ tempFilename1 + " " + tempFilename2;
+	PrepareTextFile( baseFilename + ".txt", tempFilename1 );
+	if( !System( mystrem ) ) {
+		throw CException( "Cannot run `mystem`." );
+	}
+
+	// extract tokens
+	tokens.Parse( tempFilename2 );
+
+#ifdef _WIN32
+	System( ( "DEL " + tempFilename1 + " " + tempFilename2 ).c_str() );
+#else
+	System( ( "rm " + tempFilename1 + " " + tempFilename2 ).c_str() );
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 class COccupations : public vector<COccupation> {
 public:
-	void Fill( const CTokens& tokens, const CDictionaries& templates );
+	void Fill( const CTokens& tokens,
+		const CDictionaries& templates, const CVariantDefs& variantDefs );
 	void Write( const string& baseFilename ) const;
 };
 
-void COccupations::Fill( const CTokens& tokens, const CDictionaries& templates )
+void COccupations::Fill( const CTokens& tokens,
+	const CDictionaries& templates, const CVariantDefs& variantDefs )
 {
 	CFinder finder( templates );
 	for( const CToken& token : tokens ) {
@@ -1074,40 +1117,8 @@ void COccupations::Fill( const CTokens& tokens, const CDictionaries& templates )
 	finder.Finish();
 
 	for( const CFinder::CMatch& match : finder.Matches() ) {
-		COccupation occupation;
-		for( size_t i = match.Begin; i < match.End; i++ ) {
-			if( tokens[i].Lexem == "$P" ) {
-				occupation.Who = tokens[i];
-			}
-		}
-
-		for( size_t i = match.Begin; i < match.End; i++ ) {
-			if( tokens[i].Lexem == "$O" || tokens[i].Lexem == "$L" ) {
-				occupation.Where = tokens[i];
-			}
-		}
-
-		if( match.Dictionary == 1 ) {
-			for( size_t i = match.Begin; i < match.End; i++ ) {
-				if( tokens[i].Lexem == "зав" ) {
-					occupation.Job = CInterval( tokens[i].Begin, tokens[i + 1].End );
-				}
-			}
-		} else if( match.Dictionary == 6 ) {
-			occupation.Job = tokens[match.Begin];
-			if( tokens[match.Begin + 1].Lexem == "$O" || tokens[match.Begin + 1].Lexem == "$L" ) {
-				occupation.Job.End = tokens[match.Begin + 1].End;
-			}
-		} else {
-			for( size_t i = match.Begin; i < match.End; i++ ) {
-				if( tokens[i].Lexem == "@1" ) {
-					occupation.Job = tokens[i];
-				}
-			}
-		}
-
 		// add occupation
-		push_back( occupation );
+		push_back( variantDefs.Occupation( match.Dictionary, tokens.cbegin() + match.Begin ) );
 	}
 }
 
@@ -1142,7 +1153,8 @@ int main( int argc, const char* argv[] )
 
 		// templates
 		CDictionaries templates;
-		LoadTemplates( templatesFilename, templates );
+		CVariantDefs variantDefs;
+		LoadTemplates( templatesFilename, templates, variantDefs );
 
 		// replaces
 		CDictionaries dictionaries;
@@ -1173,7 +1185,7 @@ int main( int argc, const char* argv[] )
 
 		// Write result
 		COccupations occupations;
-		occupations.Fill( tokens, templates );
+		occupations.Fill( tokens, templates, variantDefs );
 		occupations.Write( baseFilename );
 	} catch( exception& e ) {
 		cerr << "Error: " << e.what() << endl;
