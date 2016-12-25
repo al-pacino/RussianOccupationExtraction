@@ -525,18 +525,14 @@ void CNamedEntities::Read( const string& baseFilename )
 					break;
 				}
 			}
-		}
-		if( !entity.Defined() ) {
-			objects.setstate( ios::failbit );
+			if( entity.Defined() ) {
+				push_back( entity );
+			} else {
+				objects.setstate( ios::failbit );
+			}
 		}
 		if( objects.good() ) {
 			objects.ignore( numeric_limits<streamsize>::max(), '\n' );
-			push_back( entity );
-			/*if( empty() || back().HasNoIntersection( entity ) ) {
-			push_back( entity );
-			} else if( back().Length() < entity.Length() ) {
-			back() = entity;
-			}*/
 		}
 	}
 	Sort();
