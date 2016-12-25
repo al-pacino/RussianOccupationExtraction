@@ -169,4 +169,4 @@ job:студент
 | Коллекция  | Точность   | Полнота    | F-мера     | Распознано фактов (всего) |
 |:---------- | ----------:| ----------:| ----------:| -------------------------:|
 | [devset](https://github.com/dialogue-evaluation/factRuEval-2016/tree/master/devset) | 0.8994 | 0.4480 | 0.5981 | 93 (180) |
-| [testset](https://github.com/dialogue-evaluation/factRuEval-2016/tree/master/testset) | 0.8486 | 0.3972 | 0.5411 | 158 (330) |
+| [testset](https://github.com/dialogue-evaluation/factRuEval-2016/tree/master/testset) | 0.8466 | 0.4029 | 0.5460 | 163 (335) |
